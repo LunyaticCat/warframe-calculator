@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="SonarLintProjectSettings">
+    <option name="bindingEnabled" value="true" />
+    <option name="projectKey" value="LunyaticCat_warframe-calculator_ee00243d-1cb5-4825-86a7-74eec143bffb" />
+    <option name="serverId" value="http://144.24.199.147:9000" />
+  </component>
+</project>

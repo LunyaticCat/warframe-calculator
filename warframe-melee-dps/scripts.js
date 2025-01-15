@@ -128,152 +128,79 @@ const labels = {
     toxin: "toxin DoT", gas: "gas DoT"
 };
 
-function CppToColumnar(dataraw) {
-    //convert to JS array
-    const data = new Array(dataraw.size()).fill(0).map((_, id) => dataraw.get(id))
-
-    //transpose into a dictionnary with arrays on each key
-    const header_cols = ["time", "damage", "slash", "heat", "electricity", "toxin", "gas"];
-    const ret = {};
-    for (let i = header_cols.length - 1; 0 <= i; i--) {
-        ret[header_cols[i]] = data.map(row => row[i]);
-    }
-    return ret;
-}
-
 let iterations;
 let time_max;
 let tickrate;
 let quantization = true;
 let conditionals = true;
 
+let worker;
+
 function changeStats() {
-    if(weapon == null){
-        alert("Select a weapon");
-        throw "missing weapon";
-    }else if(enemies.length == 0) {
-        alert("Select an enemy to fight against");
-        throw "missing enemies";
+    if (!worker) {
+        console.log(Module);
+        worker = new Worker('worker.js');
     }
 
-    iterations = Number(document.getElementById("iterations").value);
-    time_max = Number(document.getElementById("max_time").value);
-    tickrate = Number(document.getElementById("tickrate").value);
-
-    // TODO why only first enemy?
-    const data = CppToColumnar(Module.stats(weapon, attack, enemies[0], iterations, time_max, tickrate, quantization, conditionals));
-
-    for (const key in data) {
-        data[key] = data[key].map(datum => Number(datum));// || undefined);
-    }
-
-    const time = data.time;
-    delete data.time;
-
-    const chart = document.getElementById('plot');
-
-    // creates an object for each column of the CSV
-    const plotlyData = Object.entries(data).map(([name, data]) => ({
-        y: data,
-        x: time,
-        type: 'histogram', //line //scatter //histogram
-        //mode: 'lines',
-        //mode: 'lines+markers',
-        mode: 'markers',
-        histfunc: 'sum', //count
-        xbins: { size: 1.0 },
-        //fill: 'none', //tonexty //tozerox
-        //stackgroup: 'one',
-        hovertemplate: '%{x:.3f}s - %{y:.3s}',
-        // transforms: [{ //FIXME bug when filtering, plotly SUCKKKKS
-        //     type: 'filter',
-        //     target: 'y',
-        //     operation: '>',
-        //     value: 0
-        // }],
-        name: labels[name] ?? name, //if not found, use the header
-        marker: { color: colors[name] },
-        /*
-        error_y: {
-            type: 'data',
-            array: data_error[name],
-            visible: true
-        },
-        */
-    }));
-
-    const hist = {
-        type: 'histogram',
-    }
-
-    const scatter = {
-        type: 'scatter',
-    }
-
-    const updatemenus = [{
-        buttons: [
-            {
-                args: [hist],
-                label: 'histogram',
-                method: 'update'
-            },
-            {
-                args: [scatter],
-                label: 'scatter',
-                method: 'update'
-            },
-        ],
-        direction: 'bottom',
-        pad: { l: 10, t: 10, b: 10, r: 10 },
-        showactive: true,
-        type: 'buttons',
-        x: 1.0,
-        xanchor: 'left',
-        y: 0.5,
-        yanchor: 'top'
-    }]
-
-    const layout = {
-        xaxis: {
-            //type: 'log',
-            autorange: true,
-            // range: [0, 10],
-            autorangeoptions:{
-                minallowed: -1,
-                // maxallowed: 50,
-            }
-        },
-        yaxis: {
-            // range: [0, 10],
-            // type: 'log',
-            autorange: true,
-            autorangeoptions:{
-                minallowed: -1,
-            }
-        },
-        barmode: "stack",
-        margin: {
-            b: 20,
-            l: 50,
-            r: 0,
-            t: 15,
-        },
-        modebar: {
-            // orientation: "v",
-        },
-        legend: {
-            x: 1.0,
-            y: 0.95,
-        },
-        updatemenus: updatemenus,
-    };
-
-    Plotly.newPlot(chart, plotlyData, layout, {
-        // displaylogo: false,
-        displayModeBar: true,
-        showEditInChartStudio: true,
-        plotlyServerURL: "https://chart-studio.plotly.com",
+    worker.postMessage({
+        weapon,
+        attack,
+        enemies,
+        iterations,
+        timeMax: time_max,
+        tickrate,
+        quantization,
+        conditionals,
     });
+
+    worker.onmessage = function (event) {
+        const { data, time, error } = event.data;
+
+        if (error) {
+            alert(error);
+            console.error(error);
+            return;
+        }
+
+        const chart = document.getElementById('plot');
+
+        const plotlyData = Object.entries(data).map(([name, data]) => ({
+            y: data,
+            x: time,
+            type: 'histogram',
+            mode: 'markers',
+            histfunc: 'sum',
+            xbins: { size: 1.0 },
+            hovertemplate: '%{x:.3f}s - %{y:.3s}',
+            name: labels[name] ?? name,
+            marker: { color: colors[name] },
+        }));
+
+        const layout = {
+            xaxis: { autorange: true },
+            yaxis: { autorange: true },
+            barmode: "stack",
+            margin: { b: 20, l: 50, r: 0, t: 15 },
+            legend: { x: 1.0, y: 0.95 },
+            updatemenus: [{
+                buttons: [
+                    { args: [{ type: 'histogram' }], label: 'histogram', method: 'update' },
+                    { args: [{ type: 'scatter' }], label: 'scatter', method: 'update' },
+                ],
+                direction: 'bottom',
+                showactive: true,
+                type: 'buttons',
+                x: 1.0,
+                y: 0.5,
+            }],
+        };
+
+        Plotly.newPlot(chart, plotlyData, layout, {
+            displayModeBar: true,
+            showEditInChartStudio: true,
+            plotlyServerURL: "https://chart-studio.plotly.com",
+        });
+    };
 }
 
 function formatPercent(num, maxDigits = 2) {
